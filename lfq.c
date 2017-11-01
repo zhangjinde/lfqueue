@@ -24,7 +24,7 @@ void free_pool(struct lfq_ctx *ctx, bool freeall ) {
 		return; // this pool free is not support multithreading.
 	struct lfq_node * p;
 	
-	for ( int i = 0 ; i < MAXFREE ; i++ ) {
+	for ( int i = 0 ; i < MAXFREE || freeall ; i++ ) {
 		p = ctx->fph;
 		if ( (!p->can_free) || (!p->free_next) || inHP(ctx, p) )
 			goto exit;
@@ -37,12 +37,12 @@ exit:
 }
 
 void safe_free(struct lfq_ctx *ctx, struct lfq_node * lfn) {
-	if (!lfn->can_free)
+	// if (!lfn->can_free)
 		enpool(ctx, lfn);
-	else if ( inHP(ctx, lfn) )
-		enpool(ctx, lfn);
-	else 
-		free(lfn);
+	// else if ( inHP(ctx, lfn) )
+	// 	enpool(ctx, lfn);
+	// else 
+	// 	free(lfn);
 		
 	free_pool(ctx, false);
 }
@@ -97,7 +97,6 @@ int lfq_enqueue(struct lfq_ctx *ctx, void * data) {
 	do {
 		p = (struct lfq_node *) ctx->tail;
 	} while(!CAS(&ctx->tail,p,insert_node));
-	//printf("push %p\n", insert_node);
 	p->next = insert_node;
 	mb(); // memory barrier
 	ATOMIC_ADD( &ctx->count, 1);
@@ -122,8 +121,7 @@ void * lfq_dequeue_tid(struct lfq_ctx *ctx, int tid ) {
 	do {
 		p = (struct lfq_node *) ctx->head;
 		ctx->HP[tid] = p;
-		mb();
-		if (p!= ctx->head)
+		if (p != ctx->head)
 			continue;
 		pn = (struct lfq_node *) p->next;
 		if (pn==0 || pn != p->next){
@@ -131,18 +129,12 @@ void * lfq_dequeue_tid(struct lfq_ctx *ctx, int tid ) {
 			return 0;
 		}
 	} while( ! CAS(&ctx->head, p, pn) );
-	// printf("pop %p\n", p);
-	
-	if (p->next != pn) 
-		printf("WTF!!!?? %p, %p\n",  p->next, pn);
 	
 	ctx->HP[tid] = 0;
 	ret=(void *)pn->data;
-	pn->can_free = true;
+	ATOMIC_SET(&pn->can_free, true);
 	ATOMIC_SUB( &ctx->count, 1 );
-	
-	if (p->next != pn) 
-		printf("WTF2!!!?? %p, %p\n",  p->next, pn);
+	mb();
 	safe_free(ctx, p);
 	return ret;
 }
