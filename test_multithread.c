@@ -14,12 +14,17 @@
 #include <time.h>
 #include "lfq.h"
 
+
+
 #ifndef MAX_PRODUCER
 #define MAX_PRODUCER 100
 #endif
 #ifndef MAX_CONSUMER
 #define MAX_CONSUMER 10
 #endif
+
+
+#define SOMEID 667814649
 
 volatile uint64_t cn_added = 0;
 volatile uint64_t cn_deled = 0;
@@ -43,7 +48,7 @@ addq( void * data ) {
 	int ret = 0;
 	for ( i = 0 ; i < 500000 ; i++) {
 		p = malloc(sizeof(struct user_data));
-		p->data=i;
+		p->data=SOMEID;
 		if ( ( ret = lfq_enqueue(ctx,p) ) != 0 ) {
 			printf("lfq_enqueue failed, reason:%s", strerror(-ret));
 			__sync_sub_and_fetch(&cn_producer, 1);
@@ -70,6 +75,11 @@ delq( void * data ) {
 	while(ctx->count || cn_producer) {
 		p = lfq_dequeue_tid(ctx, tid);
 		if (p) {
+			if (p->data!=SOMEID){
+				printf("data wrong!!\n");
+				exit(1);
+			}
+				
 			free(p);
 			__sync_add_and_fetch(&cn_deled, 1);			
 		} else
@@ -88,7 +98,7 @@ delq( void * data ) {
 int main() {
 	struct lfq_ctx ctx;
 	int i=0;
-	lfq_init(&ctx);
+	lfq_init(&ctx, MAX_CONSUMER);
 #if ( defined (__WIN32__) || defined(_WIN32) )
 	HANDLE thread_d[MAX_CONSUMER];
 	HANDLE thread_a[MAX_PRODUCER];
